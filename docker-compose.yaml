@@ -1,0 +1,52 @@
+version: "3.9"
+services:
+  database:
+    image: postgres
+    container_name: postgres
+    volumes:
+      - ./env/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    networks:
+      - kc-net
+
+  db_admin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    volumes:
+      - "./env/pgadmin/servers.json:/pgadmin4/servers.json"
+    ports:
+      - 5050:80
+    networks:
+      - kc-net
+    depends_on:
+      - database
+
+  sso:
+    image: jboss/keycloak
+    container_name: keycloak
+    environment:
+      - DB_VENDOR=POSTGRES
+      - DB_ADDR=postgres
+      - DB_DATABASE=keycloak
+      - DB_SCHEMA=public
+      - DB_USER=admin
+      - DB_PASSWORD=admin
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=admin
+    ports:
+      - 80:8080
+    networks:
+      - kc-net
+    depends_on:
+      - database
+
+networks:
+  kc-net:
+    name: kc-net
