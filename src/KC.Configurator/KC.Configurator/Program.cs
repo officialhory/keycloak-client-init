@@ -4,10 +4,14 @@ using KC.Configurator.Models;
 using KC.Configurator.Options;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Serilog;
+using Serilog.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -17,53 +21,65 @@ namespace KC.Configurator
 {
     class Program
     {
-        private static IConfiguration _config;
-        private static List<IOptions> _options;
-        private static HttpClient _httpClient;
-        private static List<KcConfigurationObject> _configObjects;
-        static async Task Main(string[] args)
+        static IConfiguration _config;
+        static List<IOptions> _options;
+        static HttpClient _httpClient;
+        static List<KcConfigurationObject> _configObjects;
+        static Logger _logger;
+        static List<KeyValuePair<string, string>> _clientIdsWithGuids;
+
+        static async Task Main()
         {
+            
             await Initialization();
-            Console.WriteLine((_options[0] as KeycloakOption).Url);
-            var asd = (_options.Where(x => x.GetType() == typeof(KeycloakOption)).First() as KeycloakOption);
-            FetchAppDefs(asd);
-            await CreateClients(asd);
+            var kcOpt = _options.Where(x => x.GetType() == typeof(KeycloakOption)).First() as KeycloakOption;
+            FetchAppDefs(kcOpt);
+            await CreateClients(kcOpt);
         }
 
-        private static async Task Initialization()
+        static async Task Initialization()
         {
+            _logger = new LoggerConfiguration()
+                .WriteTo.Console()
+                .MinimumLevel.Debug()
+                .CreateLogger();
+
             ConfigBuilder();
             _options = new List<IOptions>();
             GetOptionsFromConfig();
-            var kcOpt = (_options.Where(x => x.GetType() == typeof(KeycloakOption)).First() as KeycloakOption);
 
+            var kcOpt = _options.Where(x => x.GetType() == typeof(KeycloakOption)).First() as KeycloakOption;
             SetUpHttpClient(kcOpt);
             await Authentication(_httpClient, kcOpt);
 
             _configObjects = new List<KcConfigurationObject>();
-            await Task.CompletedTask;
+            _clientIdsWithGuids = new List<KeyValuePair<string, string>>();
         }
 
-        private static void ConfigBuilder()
+        static void ConfigBuilder()
         {
+            _logger.Information("[Infra] Building configuration...");
             var builder = new ConfigurationBuilder()
                .AddJsonFile("appsettings.json", false, true);
             _config = builder.Build();
         }
 
-        private static void GetOptionsFromConfig()
+        static void GetOptionsFromConfig()
         {
-            var kcConfig = new KeycloakOption();
-            _config.GetSection(KeycloakOption.Keyclaok).Bind(kcConfig);
-            _options.Add(kcConfig);
-
+            _logger.Information("[Infra] Fetching application configuration...");
             var appConfig = new AppConfigOption();
             _config.GetSection(AppConfigOption.AppConfig).Bind(appConfig);
             _options.Add(appConfig);
+
+            _logger.Information("[Infra] Fetching Keycloak related configuration...");
+            var kcConfig = new KeycloakOption();
+            _config.GetSection(KeycloakOption.Keyclaok).Bind(kcConfig);
+            _options.Add(kcConfig);
         }
 
-        private static void SetUpHttpClient(KeycloakOption kcOpt)
+        static void SetUpHttpClient(KeycloakOption kcOpt)
         {
+            _logger.Information("[Infra] Setting up HTTP Client ...");
             _httpClient = new HttpClient();
 
             _httpClient.BaseAddress = kcOpt.Url ??
@@ -74,9 +90,9 @@ namespace KC.Configurator
                 new MediaTypeWithQualityHeaderValue("application/json"));
         }
 
-        private static async Task<KcAuthRespons> Authentication(HttpClient client, KeycloakOption kcOpt)
+        static async Task<KcAuthRespons> Authentication(HttpClient client, KeycloakOption kcOpt)
         {
-            KcAuthRespons authResp = null;
+            _logger.Information("[Infra] Getting auth token...");
             var body = new List<KeyValuePair<string, string>>
             {
                 new KeyValuePair<string,string>("username", kcOpt.Username),
@@ -89,39 +105,56 @@ namespace KC.Configurator
             content.Headers.Clear();
             content.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
 
-
             var response = await client.PostAsync($"auth/realms/{kcOpt.Realm}/protocol/openid-connect/token", content);
 
             response.EnsureSuccessStatusCode();
             var cont = await response.Content.ReadAsStringAsync();
-            authResp = JsonConvert.DeserializeObject<KcAuthRespons>(cont);
-
+            _logger.Debug("{json}", JToken.Parse(cont).ToString(Formatting.Indented));
+            KcAuthRespons authResp = JsonConvert.DeserializeObject<KcAuthRespons>(cont);
 
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authResp.AccessToken);
             return authResp;
         }
 
-        private static async Task GetClients(KeycloakOption kcOpt)
+        static async Task GetClients(KeycloakOption kcOpt)
         {
             var response = await _httpClient.GetAsync($"auth/admin/realms/{kcOpt.Realm}/clients");
             response.EnsureSuccessStatusCode();
-            Console.WriteLine(await response.Content.ReadAsStringAsync());
         }
 
-        private static async Task CreateClients(KeycloakOption kcOpt)
+        static async Task CreateClients(KeycloakOption kcOpt)
         {
+            _logger.Information("[Infra] Creating Clients...");
             foreach (var cf in _configObjects)
             {
                 var jsonStr = JsonConvert.SerializeObject(cf.AppDefinition.ClientDefinition);
+                var clientId = cf.AppDefinition.ClientDefinition.ClientId;
                 var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                _logger.Information("[INFO] Creating {client}", cf.AppDefinition.ClientDefinition.ClientId);
                 var result = await _httpClient.PostAsync($"auth/admin/realms/{kcOpt.Realm}/clients", content);
-                result.EnsureSuccessStatusCode();
-            }
+                
+                if(result.StatusCode == HttpStatusCode.Conflict)
+                {
+                    _logger.Warning("[WARNING] Client already exists ({client}), Skipping ...",clientId);
+                    return;
+                }
 
+                try
+                {
+                    result.EnsureSuccessStatusCode();
+                    _clientIdsWithGuids.Add(new KeyValuePair<string, string>(clientId, result.Headers.Location.Segments.Last()));
+                    _logger.Information("[Success] Client {client} added, with id: {guid}", clientId, result.Headers.Location.Segments.Last());
+                }
+                catch
+                {
+                    _logger.Error("[ERROR] Something went wrong while adding client {client}, error code: {errorCode} ", clientId, result.StatusCode);
+                }
+            }
         }
 
-        private static void FetchAppDefs(KeycloakOption kcOpt)
+        static void FetchAppDefs(KeycloakOption kcOpt)
         {
+            _logger.Information("[Infra] Collecting application definitions from files...");
             var config = (_options.Where(x => x.GetType() == typeof(AppConfigOption)).First() as AppConfigOption);
 
             foreach (string file in Directory.EnumerateFiles(config.FolderPath, "*.json"))
