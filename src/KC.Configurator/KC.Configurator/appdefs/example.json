@@ -1,0 +1,30 @@
+﻿{
+  "appDefinition": {
+    "clientDefinition": {
+      "clientId": "new-client-from-rest-api",
+      "enabled": true,
+      "consentRequired": false,
+      "name": "new-client-from-rest-api",
+      "adminUrl": "http://localhost:4200",
+      "authorizationServicesEnabled": false,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "description": "rest-api",
+      "rootUrl": "http://localhost",
+      "baseUrl": "/",
+      "clientAuthenticatorType": "client-secret",
+      "defaultRoles": [
+        "view-profile"
+      ],
+      "redirectUris": [
+        "/realms/heroes/account/*"
+      ],
+      "webOrigins": [ "http://localhost" ],
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "publicClient": false
+    }
+  }
+}

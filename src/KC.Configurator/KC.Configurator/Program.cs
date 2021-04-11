@@ -1,5 +1,6 @@
 ﻿using KC.Configurator.Exceptions;
 using KC.Configurator.KeycloakResponses;
+using KC.Configurator.Models;
 using KC.Configurator.Options;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
@@ -19,11 +20,14 @@ namespace KC.Configurator
         private static IConfiguration _config;
         private static List<IOptions> _options;
         private static HttpClient _httpClient;
-        //private static 
+        private static List<KcConfigurationObject> _configObjects;
         static async Task Main(string[] args)
         {
             await Initialization();
             Console.WriteLine((_options[0] as KeycloakOption).Url);
+            var asd = (_options.Where(x => x.GetType() == typeof(KeycloakOption)).First() as KeycloakOption);
+            FetchAppDefs(asd);
+            await CreateClients(asd);
         }
 
         private static async Task Initialization()
@@ -35,7 +39,8 @@ namespace KC.Configurator
 
             SetUpHttpClient(kcOpt);
             await Authentication(_httpClient, kcOpt);
-            //await GetClients(kcOpt);
+
+            _configObjects = new List<KcConfigurationObject>();
             await Task.CompletedTask;
         }
 
@@ -89,7 +94,6 @@ namespace KC.Configurator
 
             response.EnsureSuccessStatusCode();
             var cont = await response.Content.ReadAsStringAsync();
-            //Console.WriteLine(cont);
             authResp = JsonConvert.DeserializeObject<KcAuthRespons>(cont);
 
 
@@ -104,25 +108,28 @@ namespace KC.Configurator
             Console.WriteLine(await response.Content.ReadAsStringAsync());
         }
 
-        private static async Task CreateClient(KeycloakOption kcOpt, string clientJson)
+        private static async Task CreateClients(KeycloakOption kcOpt)
         {
-            var myJson = "{\"clientId\":\"testid\",\"publicClient\":\"false\"}}";
-            //\"access\":{\"view\":\"true\",\"configure\":\"true\",\"manage\":\"true\"
-            var content = new StringContent(myJson, Encoding.UTF8, "application/json");
-            var result = await _httpClient.PostAsync($"auth/admin/realms/{kcOpt.Realm}/clients", content);
-            result.EnsureSuccessStatusCode();
-            Console.WriteLine(await result.Content.ReadAsStringAsync());
+            foreach (var cf in _configObjects)
+            {
+                var jsonStr = JsonConvert.SerializeObject(cf.AppDefinition.ClientDefinition);
+                var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                var result = await _httpClient.PostAsync($"auth/admin/realms/{kcOpt.Realm}/clients", content);
+                result.EnsureSuccessStatusCode();
+            }
+
         }
 
-        //private static async Task CreateClientsFromFiles(KeycloakOption kcOpt)
-        //{
-        //    var config = (_options.Where(x => x.GetType() == typeof(AppConfigOption)).First() as AppConfigOption);
+        private static void FetchAppDefs(KeycloakOption kcOpt)
+        {
+            var config = (_options.Where(x => x.GetType() == typeof(AppConfigOption)).First() as AppConfigOption);
 
-        //    foreach (string file in Directory.EnumerateFiles(config.FolderPath, "*.json"))
-        //    {
-        //        string contents = File.ReadAllText(file);
-        //        //await CreateClient(kcOpt);
-        //    }
-        //}
+            foreach (string file in Directory.EnumerateFiles(config.FolderPath, "*.json"))
+            {
+                string contents = File.ReadAllText(file);
+                var res = JsonConvert.DeserializeObject<KcConfigurationObject>(contents);
+                _configObjects.Add(res);
+            }
+        }
     }
 }
