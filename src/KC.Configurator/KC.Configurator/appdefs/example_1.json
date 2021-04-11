@@ -1,7 +1,7 @@
 ﻿{
   "appDefinition": {
     "clientDefinition": {
-      "clientId": "MyFancyApp",
+      "clientId": "MyFancyApp_1",
       "enabled": true,
       "consentRequired": false,
       "name": "new-client-from-rest-api",
@@ -10,8 +10,8 @@
       "bearerOnly": false,
       "protocol": "openid-connect",
       "description": "rest-api",
-      "rootUrl": "",
-      "baseUrl": "",
+      "rootUrl": "http://localhost",
+      "baseUrl": "/",
       "clientAuthenticatorType": "client-secret",
       "defaultRoles": [
         "admin",
@@ -19,28 +19,17 @@
         "user"
       ],
       "redirectUris": [
+        "/realms/heroes/account/*"
       ],
-      "webOrigins": [ "*" ],
+      "webOrigins": [ "http://localhost" ],
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
       "publicClient": false
     },
-    "protocolMapper": {
-        "name": "testmapper",
-        "protocol": "openid-connect",
-        "protocolMapper": "oidc-usermodel-client-role-mapper",
-        "config": {
-          "multivalued": "true",
-          "userinfo.token.claim": "true",
-          "id.token.claim": "true",
-          "access.token.claim": "true",
-          "claim.name": "my_claim",
-          "jsonType.label": "String",
-          "usermodel.clientRoleMapping.clientId": "MyFancyApp"
-        }
-     }
-    
+    "clientRoleMappings": {
+
+    }
   }
 }

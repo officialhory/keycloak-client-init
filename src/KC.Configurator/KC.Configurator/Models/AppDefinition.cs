@@ -11,5 +11,8 @@ namespace KC.Configurator.Models
     {
         [JsonProperty("clientDefinition")]
         public ClientDefinition ClientDefinition { get; set; }
+
+        [JsonProperty("protocolMapper")]
+        public ProtocolMapperDefinition ProtocolMapperDefinition { get; set; }
     }
 }
