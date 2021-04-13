@@ -31,7 +31,7 @@ namespace KC.Configurator
         {
             await Initialization();
             var kcOpt = _options.First(x => x.GetType() == typeof(KeycloakOption)) as KeycloakOption;
-            FetchAppDefs(kcOpt);
+            FetchAppDefs();
             await CreateClients(kcOpt);
             await GetClientSecrets(kcOpt);
             await CreateProtocolMappers(kcOpt);
