@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
 using Serilog.Core;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,7 +42,7 @@ namespace KC.Configurator
         {
             _logger = new LoggerConfiguration()
                 .WriteTo.Console()
-                .MinimumLevel.Information()
+                .MinimumLevel.Debug()
                 .CreateLogger();
 
             ConfigBuilder();
@@ -212,7 +213,7 @@ namespace KC.Configurator
                         response.EnsureSuccessStatusCode();
                         _logger.Information("[Success] Protocol mapper: {mapper} added to {client} client", cf.AppDefinition.ProtocolMapperDefinition.Name, key);
                     }
-                    catch (System.Exception)
+                    catch (Exception)
                     {
 
                         _logger.Error("[ERROR] Could not add protocol mapper to {client}", key);
@@ -224,5 +225,25 @@ namespace KC.Configurator
                 _logger.Information("[INFO] No added clients were found, Skipping mapper addition ...");
             }
         }
+
+        static async Task AddRoleToGroup(Guid groupId, Guid clientId, Guid roleId, string roleName)
+        {
+            var payload = new 
+            {
+                id = roleId,
+                roleName = roleName,
+                composite = false,
+                clientRole = true
+                // containerId = Guid.Empty
+            };
+            var jsonStr = JsonConvert.SerializeObject(payload);
+            var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync($"auth/admin/realms/master/groups/{groupId}/role-mappings/clients/{clientId}", content);
+
+            response.EnsureSuccessStatusCode();
+        }
+
+
     }
 }
